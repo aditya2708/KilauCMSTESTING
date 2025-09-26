@@ -46,7 +46,6 @@
     }
 @endphp
 
-
 @section('style')
     <style>
         #testimonial-container {
@@ -272,9 +271,7 @@
                                 </div>
                             @endforeach
 
-
                         </div>
-
 
                         <button class="carousel-control-prev" type="button" data-bs-target="#carouselIklan"
                             data-bs-slide="prev" style="background: none; border: none;">
@@ -284,7 +281,6 @@
                             data-bs-slide="next" style="background: none; border: none;">
                             <i class="fas fa-chevron-right" style="color: #1363c6; font-size: 1.8rem;"></i>
                         </button>
-
 
                     </div>
                 </div>
@@ -309,8 +305,6 @@
                         <i id="btn-icon" class="fas {{ $ikon }}"></i>
                         <span id="btn-label">{{ $label }}</span>
                     </button>
-
-
 
                 </div>
 
@@ -890,7 +884,6 @@
         <!-- FAQs End -->
     @endif --}}
 
-
     @if ($mitraMenu && $mitraMenu->status == 'Aktif')
         <!-- Mitra Donatur Start -->
         <div id="mitra-donatur" class="container-fluid py-5">
@@ -941,6 +934,68 @@
                 return (raw || '').toString().replace(/\D+/g, '');
             }
 
+            // Fungsi untuk masking email sebelum ditampilkan di Swal
+            function maskEmail(value) {
+                const raw = (value || '').toString();
+                if (!raw) return raw;
+                const parts = raw.split('@');
+                if (parts.length < 2) return raw;
+                const domain = parts.slice(1).join('@');
+                const local = parts[0];
+                if (!domain) return raw;
+                if (local.length <= 2) {
+                    const firstChar = local.charAt(0) || '*';
+                    return firstChar + '*@' + domain;
+                }
+                return local.slice(0, 2) + '***@' + domain;
+            }
+
+            // Fungsi untuk masking nama pengguna sebelum ditampilkan di Swal
+            function maskName(value) {
+                const raw = (value || '').toString();
+                if (!raw) return raw;
+                if (raw.length <= 1) return raw + '*' + raw;
+                if (raw.length <= 4) return raw.charAt(0) + '*' + raw.slice(-1);
+                const middleMask = '*'.repeat(raw.length - 4);
+                return raw.slice(0, 2) + middleMask + raw.slice(-2);
+            }
+
+            // Fungsi untuk masking nomor HP sebelum ditampilkan di Swal
+            function maskPhone(value) {
+                const raw = (value || '').toString().trim();
+                if (!raw) return raw;
+                const digits = raw.replace(/[^0-9]/g, '');
+                if (!digits) return raw;
+                let maskedDigits;
+                if (digits.length === 1) {
+                    maskedDigits = '*';
+                } else if (digits.length === 2) {
+                    maskedDigits = digits.charAt(0) + '*';
+                } else if (digits.length === 3) {
+                    maskedDigits = digits.charAt(0) + '*' + digits.slice(-1);
+                } else {
+                    const firstCount = Math.min(3, digits.length - 2);
+                    const lastCount = Math.min(3, digits.length - firstCount - 1);
+                    const maskLen = Math.max(1, digits.length - firstCount - lastCount);
+                    const first = digits.slice(0, firstCount);
+                    const last = digits.slice(-lastCount);
+                    maskedDigits = first + '*'.repeat(maskLen) + last;
+                }
+                let result = '';
+                let index = 0;
+                for (const char of raw) {
+                    if (/\d/.test(char) && index < maskedDigits.length) {
+                        result += maskedDigits.charAt(index++);
+                    } else {
+                        result += char;
+                    }
+                }
+                if (index < maskedDigits.length) {
+                    result += maskedDigits.slice(index);
+                }
+                return result;
+            }
+
             function fillForm(d) {
                 if (d.nama && !$('#nama').val()) $('#nama').val(d.nama);
                 if (d.email && $('#email').val() !== d.email) $('#email').val(d.email);
@@ -987,18 +1042,25 @@
                         if (!res || !res.found || !res.data) return;
 
                         const via = res.source === 'email' ? 'Email' : 'No HP';
-                        const nm = res.data.nama || '(tanpa nama)';
-                        const em = res.data.email || '-';
-                        const hp = res.data.no_hp || '-';
+                        const namaAsli = (res.data.nama || '').trim();
+                        const emailAsli = (res.data.email || '').trim();
+                        const phoneAsli = (res.data.no_hp || '').trim();
+                        const nm = namaAsli || '(tanpa nama)';
+                        const em = emailAsli || '-';
+                        const hp = phoneAsli || '-';
+                        const maskedNm = namaAsli ? maskName(namaAsli) : nm;
+                        const maskedEm = emailAsli ? maskEmail(emailAsli) : em;
+                        const maskedHp = phoneAsli ? maskPhone(phoneAsli) : hp;
 
                         isPromptOpen = true;
+                        const pesanSwal = via + ' sudah terdaftar atas nama <b>' + maskedNm + '</b><br>' +
+                            'Email: <b>' + maskedEm + '</b><br>' +
+                            'No HP: <b>' + maskedHp + '</b><br><br>' +
+                            'Apakah ingin memakai data ini untuk mengisi form?';
                         Swal.fire({
                             icon: 'question',
                             title: 'Data donatur ditemukan',
-                            html: `${via} sudah terdaftar atas nama <b>${nm}</b><br>` +
-                                `Email: <b>${em}</b><br>` +
-                                `No HP: <b>${hp}</b><br><br>` +
-                                `Apakah ingin memakai data ini untuk mengisi form?`,
+                            html: pesanSwal,
                             showCancelButton: true,
                             confirmButtonText: 'Pakai',
                             cancelButtonText: 'Tidak'
@@ -1104,7 +1166,6 @@
                 $('.modal-backdrop').remove();
                 $('body').removeClass('modal-open');
             });
-
 
             // **Pastikan tidak ada modal yang tertinggal setelah refresh**
             window.addEventListener('beforeunload', function() {
