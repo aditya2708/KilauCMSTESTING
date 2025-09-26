@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Auth;
 
-use App\Models\DonasiKilau;
-use Illuminate\Http\Request;
-use App\Models\DonasiHistory;
 use App\Http\Controllers\Controller;
+use App\Models\DonasiHistory;
+use App\Models\DonasiKilau;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 class LoginController extends Controller
 {
@@ -111,7 +114,9 @@ class LoginController extends Controller
         try {
             return Http::post('https://kilauindonesia.org/api/login_sso', $data);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Gagal menghubungi server eksternal.'], 500);
+            return Http::response([
+                'message' => 'Gagal menghubungi server eksternal.',
+            ], 500);
         }
     } */
 
@@ -181,10 +186,16 @@ class LoginController extends Controller
             'password' => 'required|string|min:6',
         ]);
 
-        $response = $this->makeApiRequest([
+        $credentials = [
             'email'    => $request->email,
             'password' => $request->password,
-        ]);
+        ];
+
+        $driver = config('kilau.auth_driver', 'remote');
+
+        $response = $driver === 'local'
+            ? $this->authenticateLocally($credentials)
+            : $this->makeApiRequest($credentials);
 
         if ($response->status() == 200) {
             $data = $response->json();
@@ -247,9 +258,38 @@ class LoginController extends Controller
         try {
             return Http::post('https://kilauindonesia.org/api/login_sso', $data);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Gagal menghubungi server eksternal.'], 500);
+            return Http::response([
+                'message' => 'Gagal menghubungi server eksternal.',
+            ], 500);
         }
-    }   
+    }
+
+    private function authenticateLocally(array $credentials)
+    {
+        $user = User::where('email', $credentials['email'])->first();
+
+        if (!$user || !Hash::check($credentials['password'], $user->password)) {
+            return Http::response([
+                'message' => 'Invalid credentials.',
+            ], 401);
+        }
+
+        $token = hash('sha256', $user->id . '|' . Str::random(60));
+
+        return Http::response([
+            'token' => $token,
+            'berhasil' => [
+                'id'               => $user->id,
+                'nama'             => $user->name,
+                'email'            => $user->email,
+                'cms'              => $user->cms ?? 'admin',
+                'level'            => $user->level ?? null,
+                'referral_code'    => $user->referral_code ?? null,
+                'foto_users_umum'  => $user->foto_users_umum ?? $user->photo ?? null,
+                'foto'             => $user->foto ?? $user->photo ?? null,
+            ],
+        ], 200);
+    }
 
     public function register() {
         return view('Auth.register');
